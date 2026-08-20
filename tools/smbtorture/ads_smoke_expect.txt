@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 Chimera-NAS Project Contributors
+#
+# SPDX-License-Identifier: Unlicense
+#
+# Known answers for `derive_ads.sh --smoke`: a handful of subtests whose
+# behaviour is established, swept end to end in a couple of seconds -- so the
+# machinery can be trusted before a 60-90 minute full sweep is worth starting.
+#
+# This exists because the sweep was previously exercised only against fabricated
+# log trees.  A fabricated tree contains what its author already believed a
+# sweep produces, so it cannot contradict them -- and the belief that went
+# unchallenged was that reaching the named-streams gate means needing the
+# feature.  These rows are real runs of the real driver, and the first one
+# contradicts it.
+#
+# Format: <classification>|<subtest>, one of the four outcomes of running the
+# subtest with SMBTORTURE_ADS=off and again with SMBTORTURE_ADS=on:
+#
+#   needs-ads                off fails, on passes
+#   needs-ads-still-failing  off fails, on fails -- but reaches a real assertion
+#   negative                 off passes, on FAILS: the feature must stay off
+#   indifferent              off passes, on passes
+#
+# The classification is pinned rather than the two exit codes, because the
+# classification is the thing the list is derived from.  Re-record after a Samba
+# image upgrade (the catalog changes) with `derive_ads.sh --smoke`, and read
+# every changed row before committing it: a row that changed because the server
+# regressed looks exactly like one that changed because the test did.
+
+# The negative test, and the reason a gate hit cannot be read as "needs ADS".
+# It opens four names containing ':' with the feature off and requires
+# OBJECT_NAME_INVALID for each, so it reaches gate 1 four times and PASSES
+# because it does.  Turning the feature on resolves "test_no_stream::$DATA" to a
+# base file it never creates, so it fails with OBJECT_NAME_NOT_FOUND -- which is
+# what adding it to smbtorture_ads_subtests.txt would do on all six backends.
+negative|smb2.create_no_streams.no_stream
+
+# A streams subtest: denied the feature it needs, fails at the gate, passes once
+# it has it.
+needs-ads|smb2.streams.io
+
+# Opens a stream as incidental setup rather than as the thing under test -- one
+# of the eleven that went unnoticed.  Reaching its real assertion is progress
+# even though it then fails there (ALT_NAME_INFORMATION is not implemented), and
+# that distinction is exactly what separates it from the negative test above.
+needs-ads-still-failing|smb2.getinfo.complex
+
+# Control: an ordinary create, in the same suite as the gate itself, that never
+# names a stream.  If this stops being indifferent, either the gate has become
+# broad enough to refuse plain CREATEs or enabling the feature has started
+# changing unrelated behaviour.
+indifferent|smb2.create.open

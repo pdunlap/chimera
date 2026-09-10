@@ -338,6 +338,16 @@ struct chimera_vfs_handle_state {
  * unset. */
 #define CHIMERA_VFS_CAP_CREATE_GID_ENGINE     (1U << 30)
 
+/* If set, the module keeps files sparse: chimera_vfs_allocate can punch a hole
+ * (deallocate a byte range so it reads as zeros without consuming storage) and
+ * chimera_vfs_seek can classify a range as DATA or HOLE.  The SMB server
+ * advertises FILE_SUPPORTS_SPARSE_FILES only for such modules, so a client
+ * never issues FSCTL_SET_ZERO_DATA / QUERY_ALLOCATED_RANGES the backend would
+ * refuse.  Both halves are required: the smb proxy can punch a hole (it
+ * forwards FSCTL_SET_ZERO_DATA) but cannot seek one, and the nfs proxy does
+ * neither, so both leave this unset. */
+#define CHIMERA_VFS_CAP_SPARSE                (1U << 31)
+
 struct chimera_vfs_module {
     /* Required
      * Set to CHIMERA_VFS_SDK_VERSION.  Checked at registration so a module

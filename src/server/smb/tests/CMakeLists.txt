@@ -1616,7 +1616,9 @@ set(SMBTORTURE_ENABLED_memfs
     smb2.ioctl.compress_perms
     smb2.ioctl.compress_query_file_attr
     smb2.ioctl.compress_set_file_attr
+    smb2.ioctl.copy_chunk_across_shares
     smb2.ioctl.copy_chunk_across_shares2
+    smb2.ioctl.copy_chunk_across_shares3
     smb2.ioctl.copy_chunk_append
     smb2.ioctl.copy_chunk_bad_access
     smb2.ioctl.copy_chunk_bad_key
@@ -2235,7 +2237,9 @@ set(SMBTORTURE_ENABLED_linux
     smb2.ioctl.compress_perms
     smb2.ioctl.compress_query_file_attr
     smb2.ioctl.compress_set_file_attr
+    smb2.ioctl.copy_chunk_across_shares
     smb2.ioctl.copy_chunk_across_shares2
+    smb2.ioctl.copy_chunk_across_shares3
     smb2.ioctl.copy_chunk_append
     smb2.ioctl.copy_chunk_bad_access
     smb2.ioctl.copy_chunk_bad_key
@@ -2780,7 +2784,9 @@ set(SMBTORTURE_ENABLED_io_uring
     smb2.ioctl.compress_perms
     smb2.ioctl.compress_query_file_attr
     smb2.ioctl.compress_set_file_attr
+    smb2.ioctl.copy_chunk_across_shares
     smb2.ioctl.copy_chunk_across_shares2
+    smb2.ioctl.copy_chunk_across_shares3
     smb2.ioctl.copy_chunk_append
     smb2.ioctl.copy_chunk_bad_access
     smb2.ioctl.copy_chunk_bad_key
@@ -3342,7 +3348,9 @@ set(SMBTORTURE_ENABLED_cairn
     smb2.ioctl.compress_perms
     smb2.ioctl.compress_query_file_attr
     smb2.ioctl.compress_set_file_attr
+    smb2.ioctl.copy_chunk_across_shares
     smb2.ioctl.copy_chunk_across_shares2
+    smb2.ioctl.copy_chunk_across_shares3
     smb2.ioctl.copy_chunk_append
     smb2.ioctl.copy_chunk_bad_access
     smb2.ioctl.copy_chunk_bad_key
@@ -3943,7 +3951,9 @@ set(SMBTORTURE_ENABLED_diskfs_io_uring
     smb2.ioctl.compress_perms
     smb2.ioctl.compress_query_file_attr
     smb2.ioctl.compress_set_file_attr
+    smb2.ioctl.copy_chunk_across_shares
     smb2.ioctl.copy_chunk_across_shares2
+    smb2.ioctl.copy_chunk_across_shares3
     smb2.ioctl.copy_chunk_append
     smb2.ioctl.copy_chunk_bad_access
     smb2.ioctl.copy_chunk_bad_key
@@ -4541,7 +4551,9 @@ set(SMBTORTURE_ENABLED_diskfs_aio
     smb2.ioctl.compress_perms
     smb2.ioctl.compress_query_file_attr
     smb2.ioctl.compress_set_file_attr
+    smb2.ioctl.copy_chunk_across_shares
     smb2.ioctl.copy_chunk_across_shares2
+    smb2.ioctl.copy_chunk_across_shares3
     smb2.ioctl.copy_chunk_append
     smb2.ioctl.copy_chunk_bad_access
     smb2.ioctl.copy_chunk_bad_key

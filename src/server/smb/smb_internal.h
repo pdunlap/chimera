@@ -3253,6 +3253,87 @@ chimera_smb_open_file_resolve(
 } /* chimera_smb_open_file_resolve */
 
 /*
+ * Resolve an open by FileId across every tree-connect of the request's session.
+ *
+ * An FSCTL that names a SECOND open inside its payload -- COPYCHUNK's resume
+ * key -- must not scope that lookup to the tree-connect the FSCTL arrived on.
+ * MS-SMB2 3.3.5.15.6 locates the source open purely by matching Open.ResumeKey,
+ * and states the one scoping rule separately: "If Open.TreeConnect.Session of
+ * the destination file is not equal to Open.TreeConnect.Session of the source
+ * file, the server MUST fail the request with STATUS_OBJECT_NAME_NOT_FOUND."
+ * The constraint is the SESSION, not the tree connect, and a client really does
+ * hold the source open on one tree connect while issuing the FSCTL on another
+ * (smb2.ioctl.copy_chunk_across_shares / -3 open two tree connects on one
+ * session and copy between them, which a request->tree lookup can never
+ * satisfy).  Searching the session's trees also answers the cross-session case
+ * correctly by construction: an open belonging to another session is not found
+ * here, which is the same OBJECT_NAME_NOT_FOUND the caller reports for a key it
+ * cannot resolve at all.
+ *
+ * Two deliberate differences from chimera_smb_open_file_resolve:
+ *   - No UINT64_MAX related-compound inheritance.  A key carried in a payload is
+ *     a literal, never the "same handle as the previous request" sentinel.
+ *   - compound->saved_file_id is left alone.  The FSCTL operates on its own
+ *     FileId, so a chained related request must keep inheriting that one and not
+ *     the open found here (MS-SMB2 3.3.5.2.7.2; pike copychunk
+ *     ssc_in_compound_req).
+ *
+ * Locks session->lock before a tree's open_files_lock, the same order
+ * chimera_smb_open_file_resolve_by_lease_key uses.  FileIds are unique across
+ * the session's trees (file_id.vid is a chimera_rand64), so the first match is
+ * the only match.  On success the returned open_file has had its refcnt bumped;
+ * release it with chimera_smb_open_file_release, which keys the bucket off
+ * open_file->tree and so handles an open from another tree connect correctly.
+ */
+static inline struct chimera_smb_open_file *
+chimera_smb_open_file_resolve_session(
+    struct chimera_smb_request *request,
+    struct chimera_smb_file_id *file_id)
+{
+    struct chimera_smb_open_file *open_file, *found = NULL;
+    struct chimera_smb_session   *session;
+    int                           t;
+    int                           open_file_bucket;
+
+    chimera_smb_abort_if(!request->session_handle, "session_handle is NULL");
+    session = request->session_handle->session;
+    chimera_smb_abort_if(!session, "session is NULL");
+
+    open_file_bucket = file_id->vid & CHIMERA_SMB_OPEN_FILE_BUCKET_MASK;
+
+    evpl_mutex_lock(&session->lock);
+
+    for (t = 0; t < session->max_trees && !found; t++) {
+        struct chimera_smb_tree *tree = session->trees[t];
+
+        if (!tree) {
+            continue;
+        }
+
+        evpl_mutex_lock(&tree->open_files_lock[open_file_bucket]);
+
+        HASH_FIND(hh, tree->open_files[open_file_bucket], file_id, sizeof(*file_id), open_file);
+
+        if (open_file && !(open_file->flags & CHIMERA_SMB_OPEN_FILE_CLOSED)) {
+            open_file->refcnt++;
+            /* Same replay-window rule as chimera_smb_open_file_resolve: a
+             * non-replay request operating on a durable open ends its
+             * replay-eligibility window (MS-SMB2 3.3.5.9.10). */
+            if (!request->is_replay) {
+                open_file->flags &= ~CHIMERA_SMB_OPEN_FILE_REPLAY_ELIGIBLE;
+            }
+            found = open_file;
+        }
+
+        evpl_mutex_unlock(&tree->open_files_lock[open_file_bucket]);
+    }
+
+    evpl_mutex_unlock(&session->lock);
+
+    return found;
+} /* chimera_smb_open_file_resolve_session */
+
+/*
  * MS-SMB2 §3.3.5.2.10 "Verifying the Channel Sequence Number".  Compare the
  * request's ChannelSequence against the highest seen on this Open.  Returns true
  * when the op must be rejected as stale (only mutating ops -- WRITE/SET_INFO/

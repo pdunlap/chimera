@@ -324,22 +324,39 @@ chimera_smb_ioctl_copychunk(struct chimera_smb_request *request)
         return;
     }
 
-    /* The source is identified by the resume key (its FileId).  Resolving it is
-     * an internal lookup that must NOT clobber the compound's related-handle
-     * inheritance: chimera_smb_open_file_resolve updates compound->saved_file_id
-     * to the last resolved handle, but the FSCTL "operates on" the DESTINATION,
-     * so a chained READ/CLOSE after this copychunk must inherit the destination
-     * handle, not the source (MS-SMB2 3.3.5.2.7.2; pike copychunk
-     * ssc_in_compound_req).  Snapshot saved_file_id (= dst, set just above) and
-     * restore it after the source lookup. */
-    struct chimera_smb_file_id cc_saved_file_id = request->compound->saved_file_id;
-    src_open_file                    = chimera_smb_open_file_resolve(request, &request->ioctl.cc_src_file_id);
-    request->compound->saved_file_id = cc_saved_file_id;
+    /* The source is identified by the resume key (its FileId), and is resolved
+     * across every tree-connect of the session rather than only on the tree this
+     * FSCTL arrived on: MS-SMB2 3.3.5.15.6 constrains the source and destination
+     * to share a SESSION, not a tree connect, and a client may legitimately hold
+     * them on two different tree connects (smb2.ioctl.copy_chunk_across_shares /
+     * -3 do exactly that).  chimera_smb_open_file_resolve_session also leaves
+     * compound->saved_file_id alone, which this lookup requires: the FSCTL
+     * "operates on" the DESTINATION, so a chained READ/CLOSE behind this
+     * copychunk must inherit the destination handle, not the source (MS-SMB2
+     * 3.3.5.2.7.2; pike copychunk ssc_in_compound_req). */
+    src_open_file = chimera_smb_open_file_resolve_session(request, &request->ioctl.cc_src_file_id);
     if (unlikely(!src_open_file)) {
         chimera_smb_open_file_release(request, dst_open_file);
         /* An unknown/expired resume key -> OBJECT_NAME_NOT_FOUND per
          * MS-SMB2 3.3.5.15.6. */
         chimera_smb_complete_request(request, SMB2_STATUS_OBJECT_NAME_NOT_FOUND);
+        return;
+    }
+
+    /* Neither end may be a named pipe: MS-SMB2 3.3.5.15.6 lists a source or
+     * destination whose Open.TreeConnect is on a named-pipe file system among the
+     * conditions answered with the invalid-parameter response of 3.3.5.15.6.2 --
+     * which is what chimera_smb_copychunk_limit_fail emits.  A pipe open also
+     * carries no VFS handle at all (chimera_smb_create_gen_open_file_pipe passes
+     * none), so this is what keeps the copy below from dereferencing a NULL
+     * handle: reachable for the destination because the FSCTL can be sent on an
+     * IPC$ handle, and now for the source too, because the session-wide
+     * resume-key lookup above can see the opens of an IPC$ tree. */
+    if (unlikely(src_open_file->type != CHIMERA_SMB_OPEN_FILE_TYPE_FILE ||
+                 dst_open_file->type != CHIMERA_SMB_OPEN_FILE_TYPE_FILE)) {
+        chimera_smb_open_file_release(request, src_open_file);
+        chimera_smb_open_file_release(request, dst_open_file);
+        chimera_smb_copychunk_limit_fail(request);
         return;
     }
 
